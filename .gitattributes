@@ -1,0 +1,9 @@
+# Keep line endings consistent across Windows and Linux contributors.
+# Without this, every checkout rewrites files and the diff is unreadable.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
