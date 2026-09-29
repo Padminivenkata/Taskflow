@@ -1,4 +1,4 @@
-import { supabase, describeError } from '@/lib/supabase'
+import { supabase, describeError, isNetworkError } from '@/lib/supabase'
 import type { Database } from '@/types/database.generated'
 import type {
   AuditLog,
@@ -33,7 +33,24 @@ async function run<T>(
   op: () => PromiseLike<{ data: T | null; error: unknown }>,
   context: string,
 ): Promise<T> {
-  const { data, error } = await op()
+  let data: T | null
+  let error: unknown
+
+  // A dropped connection makes the builder reject rather than resolve with an
+  // error object, so it has to be caught here. Without this the caller sees a
+  // raw "TypeError: Failed to fetch" instead of an explanation.
+  try {
+    ;({ data, error } = await op())
+  } catch (cause) {
+    if (isNetworkError(cause)) {
+      throw new DataError(
+        'Cannot reach the server. Check your internet connection and try again.',
+        cause,
+      )
+    }
+    throw new DataError(describeError(cause, `Could not ${context}.`), cause)
+  }
+
   if (error) throw new DataError(describeError(error, `Could not ${context}.`), error)
   return data as T
 }
