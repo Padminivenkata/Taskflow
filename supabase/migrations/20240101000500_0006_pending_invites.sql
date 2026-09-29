@@ -43,6 +43,13 @@ as $$
 declare
   v_invite public.pending_invites;
 begin
+  -- This is a server-side trigger on auth.users, so it runs with no JWT and
+  -- auth.uid() is NULL. The profiles role-escalation guard would otherwise
+  -- reject both the insert's role and promote_first_admin()'s later update,
+  -- which would make signup itself impossible. Transaction-local (third
+  -- argument true), so it cannot leak onto a pooled connection.
+  perform set_config('taskflow.system_write', 'on', true);
+
   select * into v_invite
     from public.pending_invites
    where lower(email) = lower(coalesce(new.email, ''))
