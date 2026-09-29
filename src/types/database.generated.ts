@@ -8,6 +8,20 @@ type Row<T> = { [K in keyof T]: T[K] }
 type Insert<T> = { [K in keyof T]?: T[K] }
 type Update<T> = { [K in keyof T]?: T[K] }
 
+/** Shape of a row in public.audit_logs, reused by functions that return it. */
+export interface AuditRow {
+  id: string
+  user_id: string | null
+  action: string
+  entity_type: string
+  entity_id: string | null
+  old_value: Record<string, unknown> | null
+  new_value: Record<string, unknown> | null
+  ip_address: string | null
+  user_agent: string | null
+  created_at: string
+}
+
 export interface Database {
   public: {
     Tables: {
@@ -480,21 +494,6 @@ export interface Database {
         }>
         Relationships: []
       }
-      task_activity: {
-        Row: Row<{
-          id: string
-          user_id: string | null
-          action: string
-          entity_type: string
-          entity_id: string | null
-          old_value: Record<string, unknown> | null
-          new_value: Record<string, unknown> | null
-          ip_address: string | null
-          user_agent: string | null
-          created_at: string
-        }>
-        Relationships: []
-      }
     }
     Functions: {
       current_user_id: { Args: Record<PropertyKey, never>; Returns: string }
@@ -561,6 +560,7 @@ export interface Database {
       }
       close_open_segments: { Args: { p_task_id: string; p_user_id: string; p_segment?: SegmentType }; Returns: undefined }
       open_segment: { Args: { p_task_id: string; p_user_id: string; p_segment: SegmentType }; Returns: undefined }
+      task_activity: { Args: { p_task_id: string }; Returns: AuditRow[] }
       write_audit: {
         Args: {
           p_action: string

@@ -30,6 +30,7 @@ drop trigger if exists tasks_require_key_trg on public.tasks;
 create or replace function public.tasks_assign_key()
 returns trigger
 language plpgsql
+security definer
 set search_path = public
 as $$
 declare
@@ -262,25 +263,42 @@ create policy sprint_progress_read on public.sprint_progress for select to authe
 
 -- ---------------------------------------------------------------------------
 -- 6. Activity history for people who may see a task
---    audit_logs stays admin-only; this view is the scoped, read-only window
---    that lets a task's own participants see its history.
+--    audit_logs stays admin-only; this function is the scoped, read-only
+--    window that lets a task's own participants see its history.
+--
+--    It must be SECURITY DEFINER. With security_invoker the underlying read of
+--    audit_logs would still be subject to audit_logs' own admin-only policy,
+--    so the function would return nothing for exactly the non-admins it exists
+--    to serve. As DEFINER it runs as its owner and the filtering below is the
+--    only thing deciding what a caller can see.
 -- ---------------------------------------------------------------------------
-create or replace view public.task_activity
-with (security_invoker = on)
-as
-  select a.*
-    from public.audit_logs a
-   where a.entity_type = 'task'
-     and a.entity_id is not null
-     and exists (select 1 from public.tasks t where t.id = a.entity_id::uuid)
-     and public.can_view_task((select t from public.tasks t where t.id = a.entity_id::uuid));
+create or replace function public.task_activity(p_task_id uuid)
+returns setof public.audit_logs
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  if p_task_id is null then
+    return;
+  end if;
 
-grant select on public.task_activity to authenticated;
+  if not public.can_view_task((select t from public.tasks t where t.id = p_task_id)) then
+    raise exception 'You do not have access to this task'
+      using errcode = '42501';
+  end if;
 
-alter table public.task_activity enable row level security;
-drop policy if exists task_activity_read on public.task_activity;
-create policy task_activity_read on public.task_activity for select to authenticated
-  using (public.is_admin() or public.can_view_task((select t from public.tasks t where t.id = entity_id::uuid)));
+  return query
+    select a.*
+      from public.audit_logs a
+     where a.entity_type = 'task'
+       and a.entity_id = p_task_id
+     order by a.created_at desc;
+end;
+$$;
+
+revoke all on function public.task_activity(uuid) from public, anon;
+grant execute on function public.task_activity(uuid) to authenticated;
 
 -- ---------------------------------------------------------------------------
 -- 7. Timer RPCs may only ever act on the calling user's own time

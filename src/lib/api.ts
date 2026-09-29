@@ -406,21 +406,13 @@ export const api = {
   },
 
   /**
-   * Activity for a single task. Reads the scoped `task_activity` view rather
-   * than `audit_logs`, because the raw trail is admin-only: without this the
-   * Activity tab would come back empty for every non-admin participant.
+   * Activity for a single task. Goes through the scoped `task_activity()`
+   * function rather than reading `audit_logs`, because the raw trail is
+   * admin-only and without this the Activity tab comes back empty for every
+   * non-admin participant.
    */
-  async listTaskActivity(taskId: string, limit = 300): Promise<AuditLog[]> {
-    return run(
-      () =>
-        supabase
-          .from('task_activity')
-          .select('*')
-          .eq('entity_id', taskId)
-          .order('created_at', { ascending: false })
-          .limit(limit),
-      'load the task activity',
-    )
+  async listTaskActivity(taskId: string): Promise<AuditLog[]> {
+    return run(() => supabase.rpc('task_activity', { p_task_id: taskId }), 'load the task activity')
   },
 
   async listSettings(): Promise<Record<string, unknown>> {
