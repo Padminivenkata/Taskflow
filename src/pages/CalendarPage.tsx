@@ -6,6 +6,7 @@ import { api } from '@/lib/api'
 import { useData } from '@/context/DataContext'
 import { useToast } from '@/context/ToastContext'
 import { useAuth } from '@/context/AuthContext'
+import { isIsoDate, isNullableString, usePersistentState } from '@/hooks/usePersistentState'
 import { startOfWeekIso, endOfWeekIso, addDaysIso } from '@/lib/format'
 import type { WorkingCalendarDay, EmployeeCalendarDay } from '@/types/database'
 import { Button, Card, Chip, Modal, PageHeader, Select, Skeleton } from '@/components/ui'
@@ -17,13 +18,19 @@ export default function CalendarPage() {
   const toast = useToast()
   const { user } = useAuth()
 
-  const [weekStart, setWeekStart] = useState(() => startOfWeekIso())
+  // Which week you are looking at is a view preference, not data, so it stays
+  // in this browser. Without it every refresh snapped back to the current week.
+  const [weekStart, setWeekStart] = usePersistentState<string>(
+    'calendar.weekStart',
+    startOfWeekIso(),
+    isIsoDate,
+  )
   const [workingDays, setWorkingDays] = useState<Record<string, WorkingCalendarDay>>({})
   const [employeeDays, setEmployeeDays] = useState<Record<string, EmployeeCalendarDay>>({})
   const [weekendDays, setWeekendDays] = useState<number[]>([0, 6])
   const [defaultDailyHours, setDefaultDailyHours] = useState(6)
   const [loading, setLoading] = useState(true)
-  const [selected, setSelected] = useState<string | null>(null)
+  const [selected, setSelected] = usePersistentState<string | null>('calendar.selectedDay', null, isNullableString)
 
   const weekEnd = useMemo(() => endOfWeekIso(parseISO(weekStart)), [weekStart])
   const days = useMemo(

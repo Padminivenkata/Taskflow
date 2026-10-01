@@ -2,8 +2,10 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import path from 'node:path'
 
+import { cloudflare } from "@cloudflare/vite-plugin";
+
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), cloudflare()],
   resolve: {
     alias: {
       '@': path.resolve(import.meta.dirname, './src'),
@@ -11,6 +13,10 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    allowedHosts: true,
+  },
+  preview: {
+    allowedHosts: true,
   },
   build: {
     outDir: 'dist',

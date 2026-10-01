@@ -21,30 +21,15 @@ alter table public.employee_calendar  enable row level security;
 alter table public.employee_schedules enable row level security;
 alter table public.org_settings       enable row level security;
 
--- Re-apply RLS on views so their querying user is the one filtered.
-alter table public.active_time_logs  enable row level security;
-alter table public.user_workload     enable row level security;
-alter table public.sprint_progress   enable row level security;
-
 -- ---------------------------------------------------------------------------
--- VIEW POLICIES (security_invoker views inherit the base table's RLS, but
--- explicit policies keep behaviour identical across Supabase versions)
+-- VIEWS: active_time_logs / user_workload / sprint_progress
+--
+-- Postgres does not allow ENABLE ROW LEVEL SECURITY or CREATE POLICY on a
+-- view. A view filters rows by running the querying user's permissions
+-- through the base table's RLS, which is what security_invoker=true does.
+-- Migration 0002 defines all three views with security_invoker, so they
+-- inherit the RLS of tasks / time_logs / sprints and need no policies here.
 -- ---------------------------------------------------------------------------
-drop policy if exists active_time_logs_read on public.active_time_logs;
-create policy active_time_logs_read on public.active_time_logs for select to authenticated
-  using (public.can_view_task((select t from public.tasks t where t.id = task_id)));
-
-drop policy if exists user_workload_read on public.user_workload;
-create policy user_workload_read on public.user_workload for select to authenticated
-  using (public.is_admin() or public.is_department_head() or id = auth.uid());
-
-drop policy if exists sprint_progress_read on public.sprint_progress;
-create policy sprint_progress_read on public.sprint_progress for select to authenticated
-  using (public.is_admin()
-         or public.is_department_head()
-         or exists (select 1 from public.tasks t
-                     where t.sprint_id = sprint_id
-                       and (t.assignee_id = auth.uid() or t.created_by = auth.uid())));
 
 -- ===========================================================================
 -- departments

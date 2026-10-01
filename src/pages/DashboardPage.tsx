@@ -32,7 +32,7 @@ import {
 import { useData } from '@/context/DataContext'
 import { useAuth } from '@/context/AuthContext'
 import { PRIORITY_META, STATUS_META, TASK_STATUSES } from '@/lib/constants'
-import { agingDays, cycleTimeDays, formatDate, formatHours, isOverdue } from '@/lib/format'
+import { agingDays, cycleTimeDays, formatDate, formatHours, isOverdue, isSprintOverdue } from '@/lib/format'
 import type { TaskStatus } from '@/types/database'
 import { Card, EmptyState, PageHeader, ProgressBar, Skeleton } from '@/components/ui'
 const CHART_COLORS: Record<TaskStatus, string> = {
@@ -211,6 +211,15 @@ export default function DashboardPage() {
         >
           {activeSprint && activeProgress ? (
             <div className="space-y-3">
+              {isSprintOverdue(activeSprint) && (
+                <p className="rounded-md border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200">
+                  Overdue — ended {formatDate(activeSprint.end_date, 'dd MMM yyyy')}.{' '}
+                  <Link to="/sprints" className="underline">
+                    Start a new sprint
+                  </Link>{' '}
+                  to move this one to history.
+                </p>
+              )}
               <div>
                 <p className="text-base font-semibold text-white">{activeSprint.name}</p>
                 {activeSprint.goal && <p className="mt-0.5 text-xs text-slate-400">{activeSprint.goal}</p>}

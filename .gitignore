@@ -36,3 +36,8 @@ Thumbs.db
 supabase/.branches
 supabase/.temp
 supabase/.env
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example

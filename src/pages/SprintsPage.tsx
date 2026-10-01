@@ -7,7 +7,7 @@ import { useToast, useConfirm } from '@/context/ToastContext'
 import { useAuth } from '@/context/AuthContext'
 import { api } from '@/lib/api'
 import { STATUS_META, TASK_STATUSES } from '@/lib/constants'
-import { formatDate, formatHours, titleCase } from '@/lib/format'
+import { daysOverdue, formatDate, formatHours, isSprintOverdue, titleCase } from '@/lib/format'
 import type { Sprint, SprintStatus } from '@/types/database'
 import { Button, Card, Chip, EmptyState, Field, Input, Modal, PageHeader, ProgressBar, Skeleton, Textarea } from '@/components/ui'
 
@@ -35,7 +35,23 @@ export default function SprintsPage() {
     return map
   }, [sprintProgress])
 
-  const activeSprint = sprints.find((s) => s.status === 'ACTIVE') ?? null
+  // The DB allows one ACTIVE sprint per department, so more than one can come
+  // back. Prefer the viewer's own department, then the most recently started,
+  // instead of whichever row the sort happened to return first.
+  const activeSprint = useMemo(() => {
+    const active = sprints.filter((s) => s.status === 'ACTIVE')
+    if (active.length === 0) return null
+    if (active.length === 1) return active[0]
+    const mine = active.filter((s) => s.department_id && s.department_id === profile?.department_id)
+    const pool = mine.length > 0 ? mine : active
+    return [...pool].sort((a, b) => (b.start_date ?? '').localeCompare(a.start_date ?? ''))[0]
+  }, [sprints, profile?.department_id])
+
+  const otherActiveSprints = useMemo(
+    () => sprints.filter((s) => s.status === 'ACTIVE' && s.id !== activeSprint?.id),
+    [sprints, activeSprint],
+  )
+
   const plannedSprints = sprints.filter((s) => s.status === 'PLANNED')
   const history = sprints.filter((s) => s.status === 'COMPLETED')
 
@@ -71,14 +87,27 @@ export default function SprintsPage() {
   }
 
   const setStatus = async (sprint: Sprint, status: SprintStatus) => {
-    if (status === 'ACTIVE') {
-      if (activeSprint && activeSprint.id !== sprint.id) {
-        toast.error(
-          'Another sprint is already active',
-          `Complete "${activeSprint.name}" first. Only one sprint can be active at a time.`,
-        )
-        return
-      }
+    // Only one sprint may be ACTIVE, so starting a new one has to retire every
+    // other active sprint first. Previously this just errored out, which left an
+    // expired sprint active forever and made switching impossible.
+    const retiring = status === 'ACTIVE' ? sprints.filter((s) => s.status === 'ACTIVE' && s.id !== sprint.id) : []
+
+    if (status === 'ACTIVE' && retiring.length > 0) {
+      const names = retiring.map((s) => `"${s.name}"`).join(', ')
+      const stale = retiring.filter(isSprintOverdue)
+      const ok = await confirm({
+        title: `Start "${sprint.name}"?`,
+        description: `${names} ${retiring.length === 1 ? 'will be completed' : 'will be completed'} and moved to history${
+          stale.length > 0
+            ? ` — ${stale.map((s) => `"${s.name}" ended ${formatDate(s.end_date, 'dd MMM yyyy')}`).join('; ')} and ${stale.length === 1 ? 'is' : 'are'} still marked active`
+            : ''
+        }. Tasks that are not done stay on the board untouched.`,
+        confirmLabel: `Complete ${retiring.map((s) => s.name).join(', ')} & start ${sprint.name}`,
+        danger: stale.length > 0,
+      })
+      if (!ok) return
+    }
+    if (status === 'ACTIVE' && retiring.length === 0) {
       const ok = await confirm({
         title: `Start "${sprint.name}"?`,
         description: 'The sprint becomes the active sprint for the whole organisation. This is stored in the database, so a refresh will not reset it.',
@@ -96,12 +125,24 @@ export default function SprintsPage() {
       if (!ok) return
     }
     try {
+      // Archive outgoing sprints before the new one takes the ACTIVE slot,
+      // otherwise a partial unique index on status rejects the second write.
+      for (const old of retiring) {
+        await api.updateSprint(old.id, {
+          status: 'COMPLETED',
+          completed_at: new Date().toISOString(),
+        })
+      }
       await api.updateSprint(sprint.id, {
         status,
         start_date: status === 'ACTIVE' && !sprint.start_date ? new Date().toISOString().slice(0, 10) : sprint.start_date,
         completed_at: status === 'COMPLETED' ? new Date().toISOString() : null,
       })
-      toast.success(`Sprint ${status === 'ACTIVE' ? 'started' : status === 'COMPLETED' ? 'completed' : 'updated'}`)
+      toast.success(
+        status === 'ACTIVE' && retiring.length > 0
+          ? `${retiring.map((s) => s.name).join(', ')} completed, ${sprint.name} started`
+          : `Sprint ${status === 'ACTIVE' ? 'started' : status === 'COMPLETED' ? 'completed' : 'updated'}`,
+      )
       await refresh()
       await refreshTasks()
       await refreshAuditLogs()
@@ -172,6 +213,19 @@ export default function SprintsPage() {
         </div>
       ) : (
         <div className="space-y-5">
+          {otherActiveSprints.length > 0 && (
+            <div className="card border-amber-500/30 bg-amber-500/5 p-4 text-sm text-amber-200">
+              <p className="font-medium">
+                {otherActiveSprints.length} other sprint{otherActiveSprints.length === 1 ? ' is' : 's are'} also marked
+                active
+              </p>
+              <p className="mt-0.5 text-xs text-amber-300/70">
+                {otherActiveSprints.map((s) => s.name).join(', ')}. Starting a new sprint completes{' '}
+                {otherActiveSprints.length === 1 ? 'it' : 'them'} automatically.
+              </p>
+            </div>
+          )}
+
           <SprintSection
             title="Active sprint"
             sprints={activeSprint ? [activeSprint] : []}
@@ -319,11 +373,22 @@ function SprintSection({
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="text-base font-semibold text-white">{s.name}</h3>
                       <Chip className={STATUS_CHIP[s.status]}>{titleCase(s.status.toLowerCase())}</Chip>
+                      {isSprintOverdue(s) && (
+                        <Chip className="border-amber-500/40 bg-amber-500/15 text-amber-300">
+                          Overdue {daysOverdue(s)}d
+                        </Chip>
+                      )}
                     </div>
                     <p className="mt-0.5 text-xs text-slate-500">
                       {formatDate(s.start_date)} → {formatDate(s.end_date)}
                       {s.department_id ? ` · ${departmentById(s.department_id)?.name ?? 'Unknown department'}` : ' · Organisation wide'}
                     </p>
+                    {isSprintOverdue(s) && (
+                      <p className="mt-1 text-xs text-amber-300/80">
+                        Ended {formatDate(s.end_date, 'dd MMM')} but is still marked active. Starting another sprint
+                        will move this one to history.
+                      </p>
+                    )}
                   </div>
                   {canManage && (
                     <div className="flex gap-1.5">

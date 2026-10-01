@@ -338,19 +338,13 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
--- 4 + 5. View policies
+-- 4 + 5. View access
+--
+-- user_workload and sprint_progress are views, not tables. Postgres rejects
+-- CREATE POLICY on a view, and 0002 already defines both with
+-- security_invoker = on, so they apply the querying user's RLS from the
+-- underlying tasks / time_logs / sprints. No policies are needed here.
 -- ---------------------------------------------------------------------------
-drop policy if exists user_workload_read on public.user_workload;
-create policy user_workload_read on public.user_workload for select to authenticated
-  using (public.is_admin() or public.is_department_head() or user_id = auth.uid());
-
-drop policy if exists sprint_progress_read on public.sprint_progress;
-create policy sprint_progress_read on public.sprint_progress for select to authenticated
-  using (public.is_admin()
-         or public.is_department_head()
-         or exists (select 1 from public.tasks t
-                     where t.sprint_id = public.sprint_progress.sprint_id
-                       and (t.assignee_id = auth.uid() or t.created_by = auth.uid())));
 
 -- ---------------------------------------------------------------------------
 -- 6. Activity history for people who may see a task

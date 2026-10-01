@@ -7,6 +7,7 @@ import { api } from '@/lib/api'
 import { useData } from '@/context/DataContext'
 import { useAuth } from '@/context/AuthContext'
 import { useToast } from '@/context/ToastContext'
+import { isIsoDate, isString, usePersistentState } from '@/hooks/usePersistentState'
 import type { CapacityResult, UserWorkload } from '@/types/database'
 import { Avatar, Button, Card, EmptyState, PageHeader, ProgressBar, Select, Skeleton } from '@/components/ui'
 
@@ -15,8 +16,8 @@ export default function CapacityPage() {
   const { user } = useAuth()
   const toast = useToast()
 
-  const [weekStart, setWeekStart] = useState(() => startOfWeekIso())
-  const [departmentFilter, setDepartmentFilter] = useState('')
+  const [weekStart, setWeekStart] = usePersistentState<string>('capacity.weekStart', startOfWeekIso(), isIsoDate)
+  const [departmentFilter, setDepartmentFilter] = usePersistentState<string>('capacity.departmentFilter', '', isString)
   const [workload, setWorkload] = useState<UserWorkload[] | null>(null)
   const [capacities, setCapacities] = useState<Record<string, CapacityResult | null>>({})
   const [busy, setBusy] = useState(false)

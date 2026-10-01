@@ -59,6 +59,26 @@ export function isOverdue(dueDate: string | null, status: string): boolean {
   return today !== null && dueDate < today
 }
 
+/**
+ * An ACTIVE sprint whose end date has passed. Sprint status is a stored value,
+ * never derived from dates, so an abandoned sprint otherwise stays "active"
+ * forever and blocks the next one from starting.
+ */
+export function isSprintOverdue(sprint: { status: string; end_date: string | null }): boolean {
+  if (sprint.status !== 'ACTIVE') return false
+  if (!sprint.end_date) return false
+  const today = toISODate(new Date())
+  return today !== null && sprint.end_date < today
+}
+
+/** Whole days past the end date. 0 when not overdue, null when unknown. */
+export function daysOverdue(sprint: { status: string; end_date: string | null }): number | null {
+  if (!isSprintOverdue(sprint) || !sprint.end_date) return null
+  const today = toISODate(new Date())
+  if (!today) return null
+  return differenceInCalendarDays(parseISO(today), parseISO(sprint.end_date))
+}
+
 export function daysBetween(a: string, b: string): number {
   return differenceInCalendarDays(parseISO(b), parseISO(a))
 }

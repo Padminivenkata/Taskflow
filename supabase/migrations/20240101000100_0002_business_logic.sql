@@ -456,9 +456,20 @@ drop trigger if exists time_logs_audit_trg on public.time_logs;
 create trigger time_logs_audit_trg after insert or update on public.time_logs
   for each row execute function public.time_logs_audit();
 
+-- A trigger function cannot take arguments, so recompute_task_hours(p_task_id)
+-- cannot be used directly. This no-argument wrapper resolves the affected task
+-- for every operation, including DELETE where new is not available.
+create or replace function public.time_logs_recompute()
+returns trigger language plpgsql security definer set search_path = public as $$
+begin
+  perform public.recompute_task_hours(coalesce(new.task_id, old.task_id));
+  return null;
+end;
+$$;
+
 drop trigger if exists time_logs_recompute_trg on public.time_logs;
 create trigger time_logs_recompute_trg after insert or update or delete on public.time_logs
-  for each row execute function public.recompute_task_hours(coalesce(new.task_id, old.task_id));
+  for each row execute function public.time_logs_recompute();
 
 -- ---------------------------------------------------------------------------
 -- Sprint audit

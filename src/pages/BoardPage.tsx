@@ -14,26 +14,30 @@ import { Filter, Plus, RefreshCw, Smartphone, Columns3 } from 'lucide-react'
 import clsx from 'clsx'
 import { useData } from '@/context/DataContext'
 import { useTaskActions } from '@/hooks/useTaskActions'
+import { isBoolean, isOneOf, isString, usePersistentState } from '@/hooks/usePersistentState'
 import { applyFilters, api } from '@/lib/api'
 import { BOARD_STATUSES, STATUS_META } from '@/lib/constants'
-import { EMPTY_FILTERS } from '@/types/database'
+import { EMPTY_FILTERS, isTaskFilters } from '@/types/database'
 import type { Task, TaskFilters, TaskStatus } from '@/types/database'
 import { Button, EmptyState, PageHeader, Select, Skeleton } from '@/components/ui'
 import { TaskCard, SortableTaskCard } from '@/components/tasks/TaskCard'
 import { FilterBar } from '@/components/tasks/FilterBar'
 import { TaskFormModal } from '@/components/tasks/TaskFormModal'
+import { SprintControl } from '@/components/sprints/SprintControl'
+
+const isBoardView = isOneOf(['columns', 'list'] as const)
 
 export default function BoardPage() {
   const { tasks, sprints, loading, canCreate, refresh, profile } = useData()
   const { changeStatus } = useTaskActions()
 
-  const [filters, setFilters] = useState<TaskFilters>(EMPTY_FILTERS)
+  const [filters, setFilters] = usePersistentState<TaskFilters>('board.filters', EMPTY_FILTERS, isTaskFilters)
   const [createOpen, setCreateOpen] = useState(false)
   const [createStatus, setCreateStatus] = useState<TaskStatus>('TO_DO')
   const [dragging, setDragging] = useState<Task | null>(null)
-  const [mobileView, setMobileView] = useState<'columns' | 'list'>('columns')
-  const [onlyMine, setOnlyMine] = useState(false)
-  const [sprintFilter, setSprintFilter] = useState<string>('')
+  const [mobileView, setMobileView] = usePersistentState<'columns' | 'list'>('board.view', 'columns', isBoardView)
+  const [onlyMine, setOnlyMine] = usePersistentState<boolean>('board.onlyMine', false, isBoolean)
+  const [sprintFilter, setSprintFilter] = usePersistentState<string>('board.sprintFilter', '', isString)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -115,6 +119,15 @@ export default function BoardPage() {
     if (!createOpen) setCreateStatus('TO_DO')
   }, [createOpen])
 
+  // A sprint that was deleted while this browser had it selected would leave the
+  // board permanently blank, so drop the stale id once the sprint list arrives.
+  useEffect(() => {
+    if (!sprintFilter || sprintFilter === 'none') return
+    if (sprints.length === 0) return
+    if (sprints.some((s) => s.id === sprintFilter)) return
+    setSprintFilter('')
+  }, [sprints, sprintFilter, setSprintFilter])
+
   if (loading && tasks.length === 0) {
     return (
       <div className="p-4 sm:p-6">
@@ -184,6 +197,7 @@ export default function BoardPage() {
             <Button variant="secondary" size="sm" icon={<RefreshCw className="h-3.5 w-3.5" />} onClick={() => void refresh()}>
               <span className="hidden sm:inline">Refresh</span>
             </Button>
+            <SprintControl />
             {canCreate && (
               <Button
                 size="sm"

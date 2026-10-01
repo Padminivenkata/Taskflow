@@ -247,3 +247,23 @@ export const EMPTY_FILTERS: TaskFilters = {
   overdueOnly: false,
   unassignedOnly: false,
 }
+
+/**
+ * Guards the filter set restored from localStorage. A value from an older
+ * build may be missing keys the current `TaskFilters` expects, which would
+ * otherwise blow up inside `applyFilters`.
+ */
+export function isTaskFilters(v: unknown): v is TaskFilters {
+  if (typeof v !== 'object' || v === null) return false
+  const f = v as Record<string, unknown>
+  return (
+    typeof f.search === 'string' &&
+    Array.isArray(f.departmentIds) &&
+    Array.isArray(f.assigneeIds) &&
+    Array.isArray(f.statuses) &&
+    Array.isArray(f.priorities) &&
+    Array.isArray(f.sprintIds) &&
+    typeof f.overdueOnly === 'boolean' &&
+    typeof f.unassignedOnly === 'boolean'
+  )
+}
